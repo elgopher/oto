@@ -63,7 +63,7 @@ type NewContextOptions struct {
 	// channels are stereo playback. No other values are supported.
 	ChannelCount int
 
-	// Format specifies the format of sources.
+	// Format specifies the format of Player sources.
 	Format Format
 
 	// BufferSize specifies a buffer size in the underlying device.
@@ -137,6 +137,12 @@ func NewContext(options *NewContextOptions) (*Context, chan struct{}, error) {
 func (c *Context) NewPlayer(r io.Reader) *Player {
 	return &Player{
 		player: c.context.mux.NewPlayer(r),
+	}
+}
+
+func (c *Context) NewLivePlayer(r mux.LiveReader) *LivePlayer {
+	return &LivePlayer{
+		player: c.context.mux.NewLivePlayer(r),
 	}
 }
 

@@ -53,7 +53,7 @@ type Mux struct {
 	channelCount int
 	format       Format
 
-	players map[*playerImpl]struct{}
+	players map[player]struct{}
 	buf     []float32
 	cond    *sync.Cond
 }
@@ -89,7 +89,7 @@ func (m *Mux) wait() {
 }
 
 func (m *Mux) loop() {
-	var players []*playerImpl
+	var players []player
 	for {
 		m.wait()
 
@@ -119,18 +119,18 @@ func (m *Mux) loop() {
 	}
 }
 
-func (m *Mux) addPlayer(player *playerImpl) {
+func (m *Mux) addPlayer(p player) {
 	m.cond.L.Lock()
 	defer m.cond.L.Unlock()
 
 	if m.players == nil {
-		m.players = map[*playerImpl]struct{}{}
+		m.players = map[player]struct{}{}
 	}
-	m.players[player] = struct{}{}
+	m.players[p] = struct{}{}
 	m.cond.Signal()
 }
 
-func (m *Mux) removePlayer(player *playerImpl) {
+func (m *Mux) removePlayer(player player) {
 	m.cond.L.Lock()
 	defer m.cond.L.Unlock()
 
@@ -141,7 +141,7 @@ func (m *Mux) removePlayer(player *playerImpl) {
 // ReadFloat32s fills buf with the multiplexed data of the players as float32 values.
 func (m *Mux) ReadFloat32s(buf []float32) {
 	m.cond.L.Lock()
-	players := make([]*playerImpl, 0, len(m.players))
+	players := make([]player, 0, len(m.players))
 	for p := range m.players {
 		players = append(players, p)
 	}
@@ -194,6 +194,19 @@ func (m *Mux) NewPlayer(src io.Reader) *Player {
 		},
 	}
 	runtime.SetFinalizer(pl, (*Player).Close)
+	return pl
+}
+
+func (m *Mux) NewLivePlayer(src LiveReader) *LivePlayer {
+	pl := &LivePlayer{
+		reader: src,
+		mux:    m,
+		volume: 1.0,
+	}
+
+	m.addPlayer(pl)
+
+	runtime.SetFinalizer(pl, (*LivePlayer).Close)
 	return pl
 }
 
@@ -438,6 +451,12 @@ func (p *playerImpl) closeImpl() error {
 	p.state = playerClosed
 	p.buf = nil
 	return p.err
+}
+
+type player interface {
+	readBufferAndAdd(buf []float32) int
+	canReadSourceToBuffer() bool
+	readSourceToBuffer() int
 }
 
 func (p *playerImpl) readBufferAndAdd(buf []float32) int {
